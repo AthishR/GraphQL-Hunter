@@ -8,7 +8,8 @@ cd GraphQL-Hunter
 pip install -r requirements.txt
 
 
-**🎯 Basic Usage**
+##🎯 Basic Usage**
+
 # Basic scan
 graphql-hunter example.com
 
