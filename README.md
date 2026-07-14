@@ -7,8 +7,7 @@ git clone https://github.com/YOUR_USERNAME/GraphQL-Hunter
 cd GraphQL-Hunter
 pip install -r requirements.txt
 
-
-##🎯 Basic Usage
+## ⚡ Quick Install
 
 # Basic scan
 graphql-hunter example.com
