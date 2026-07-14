@@ -1,6 +1,28 @@
 # GraphQL-Hunter
 GraphQL-Hunter is an advanced reconnaissance framework that discovers hidden GraphQL endpoints through JavaScript crawling, robots.txt analysis, sitemap parsing, and 35+ common paths. Unlike traditional tools that just guess common directories, it thinks like a human researcher, finding endpoints buried in client-side code and configuration files.
 
+**🔥 Features**
+🔍 JavaScript crawling for hidden endpoints
+
+🎯 35+ common GraphQL paths
+
+📊 Confidence scoring (0-100)
+
+🚀 Async scanning (50+ targets/sec)
+
+📝 JSON reports with metadata
+
+🔌 Burp Suite proxy support
+
+🐳 Docker ready
+
+**🏆Confidence Scoring**
+Score	Status
+90-100	🏆 Confirmed
+70-89	✅ High Confidence
+40-69	⚠️ Suspected
+0-39	❌ Unlikely
+
 ## ⚡ Quick Install
 ```bash
 git clone https://github.com/YOUR_USERNAME/GraphQL-Hunter
@@ -8,7 +30,7 @@ cd GraphQL-Hunter
 pip install -r requirements.txt
 
 
-🎯 Basic Usage
+**🎯 Basic Usage**
 
 bash
 # Basic scan
