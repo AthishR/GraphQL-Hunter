@@ -25,7 +25,7 @@ Score	Status
 
 ## ⚡ Quick Install
 ```bash
-git clone https://github.com/YOUR_USERNAME/GraphQL-Hunter
+git clone https://github.com/AthishR/GraphQL-Hunter/tree/main
 cd GraphQL-Hunter
 pip install -r requirements.txt
 
