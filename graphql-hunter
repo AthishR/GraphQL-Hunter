@@ -1,0 +1,289 @@
+#!/usr/bin/env python3
+"""
+GQLRecon Pro - GraphQL Endpoint Discovery Framework
+Author: Based on the PDF specification
+License: Defensive/Authorized testing only
+"""
+
+import asyncio
+import aiohttp
+import argparse
+import json
+import re
+import requests
+from bs4 import BeautifulSoup
+from urllib.parse import urljoin
+
+# Common GraphQL paths to test
+COMMON_PATHS = [
+    # Most common
+    "/graphql",
+    "/api/graphql",
+    "/v1/graphql",
+    "/v2/graphql",
+    "/v3/graphql",
+    "/gql",
+    "/query",
+    "/api",
+    "/api/query",
+    "/api/gql",
+    
+    # Versioned
+    "/api/v1/graphql",
+    "/api/v2/graphql",
+    "/api/v3/graphql",
+    "/graphql/v1",
+    "/graphql/v2",
+    "/graphql/v3",
+    "/v1/gql",
+    "/v2/gql",
+    
+    # Playgrounds
+    "/graphiql",
+    "/playground",
+    "/graphql/playground",
+    "/api/graphql/playground",
+    "/graphql/graphiql",
+    "/graphiql/graphql",
+    
+    # Consoles/Explorers
+    "/graphql/console",
+    "/graphql/explorer",
+    "/graphql/ide",
+    "/api/graphql/console",
+    
+    # Internal/Private
+    "/internal/graphql",
+    "/private/graphql",
+    "/public/graphql",
+    "/backend/graphql",
+    "/mobile/graphql",
+    "/admin/graphql",
+    "/admin/api/graphql",
+    "/internal/api/graphql",
+    
+    # Cloud/SaaS specific
+    "/.graphql",
+    "/_graphql",
+    "/__graphql",
+    "/graphql-api",
+    "/api-graphql",
+    "/graphql-endpoint",
+    
+    # Framework specific
+    "/wp-json/graphql",          # WordPress
+    "/api/graphql",              # Apollo
+    "/graphql/query",            # Hasura
+    "/v1/query",                 # Hasura
+    "/api/graphql/query",        # Hasura
+    "/graphql/graphql",          # Some setups
+    
+    # Custom common ones
+    "/graphql/api",
+    "/graphql/public",
+    "/api/public/graphql",
+    "/api/private/graphql",
+    "/services/graphql",
+    "/service/graphql",
+    "/gql/api",
+    "/gql/query",
+    "/query/graphql",
+    "/graphql/beta",
+    "/graphql/stable",
+    "/graphql/prod",
+    "/graphql/dev",
+    
+    # Add your custom paths below this line
+    # "/your/custom/path",
+    # "/another/custom/path",
+]
+
+# Introspection query for validation
+INTROSPECTION_QUERY = {
+    "query": "{ __schema { queryType { name } } }"
+}
+
+# GraphQL signature keywords for confidence scoring
+GRAPHQL_SIGNS = [
+    "_schema",
+    "Cannot query field",
+    "GraphQL",
+    "queryType",
+    "errors",
+    "data",
+    "__schema",
+    "introspection"
+]
+
+def extract_js_urls(domain):
+    """Extract JavaScript URLs from target domain HTML"""
+    urls = set()
+    try:
+        r = requests.get(f"https://{domain}", timeout=8)
+        soup = BeautifulSoup(r.text, "html.parser")
+        for script in soup.find_all("script", src=True):
+            js_url = urljoin(f"https://{domain}", script["src"])
+            urls.add(js_url)
+    except Exception as e:
+        pass
+    return list(urls)
+
+def extract_graphql_from_js(js_urls):
+    """Extract GraphQL path patterns from JavaScript files"""
+    endpoints = set()
+    for url in js_urls:
+        try:
+            r = requests.get(url, timeout=8)
+            # Find GraphQL-like paths in JS
+            matches = re.findall(r'/[a-zA-Z0-9_-]+/?graphql[a-zA-Z0-9_-]*/?', r.text)
+            endpoints.update(matches)
+            # Also find URL patterns
+            url_patterns = re.findall(r'["\']([^"\']*graphql[^"\']*)["\']', r.text)
+            for pattern in url_patterns:
+                if pattern.startswith('/'):
+                    endpoints.add(pattern)
+        except:
+            continue
+    return list(endpoints)
+
+def score_response(text):
+    """Calculate confidence score for potential GraphQL response"""
+    score = 0
+    t = text.lower()
+    
+    for sig in GRAPHQL_SIGNS:
+        if sig.lower() in t:
+            score += 25
+    
+    if "_schema" in t:
+        score += 40
+    
+    return min(score, 100)
+
+async def probe(session, url):
+    """Probe a URL for GraphQL endpoint"""
+    try:
+        async with session.post(url, json=INTROSPECTION_QUERY, timeout=8) as resp:
+            text = await resp.text()
+            score = score_response(text)
+            
+            if resp.status == 200 and score >= 70:
+                return {
+                    "url": url,
+                    "status": "confirmed",
+                    "score": score,
+                    "status_code": resp.status
+                }
+            
+            if score > 30:
+                return {
+                    "url": url,
+                    "status": "suspected",
+                    "score": score,
+                    "status_code": resp.status
+                }
+    except:
+        pass
+    
+    return None
+
+async def scan(domain, extra_paths=None, concurrency=20):
+    """Main scan orchestrator"""
+    targets = [f"https://{domain}{p}" for p in COMMON_PATHS]
+    
+    if extra_paths:
+        for p in extra_paths:
+            if p.startswith("/"):
+                targets.append(f"https://{domain}{p}")
+            else:
+                targets.append(f"https://{domain}/{p}")
+    
+    connector = aiohttp.TCPConnector(limit=concurrency)
+    results = []
+    
+    async with aiohttp.ClientSession(connector=connector) as session:
+        tasks = [probe(session, url) for url in targets]
+        responses = await asyncio.gather(*tasks)
+        
+        for r in responses:
+            if r:
+                results.append(r)
+    
+    # Sort by score (highest first)
+    results.sort(key=lambda x: x['score'], reverse=True)
+    return results
+
+def save_json(results, file):
+    """Save results to JSON file"""
+    with open(file, "w") as f:
+        json.dump(results, f, indent=2)
+
+def print_results(results):
+    """Print formatted results to console"""
+    print("\n" + "="*50)
+    print("GQLRecon Pro - Results")
+    print("="*50 + "\n")
+    
+    if not results:
+        print("❌ No GraphQL endpoints found.")
+        return
+    
+    confirmed = [r for r in results if r['status'] == 'confirmed']
+    suspected = [r for r in results if r['status'] == 'suspected']
+    
+    if confirmed:
+        print(f"✅ CONFIRMED ({len(confirmed)}):")
+        for r in confirmed:
+            print(f"   🟢 {r['url']} (score={r['score']})")
+    
+    if suspected:
+        print(f"\n⚠️  SUSPECTED ({len(suspected)}):")
+        for r in suspected:
+            print(f"   🟡 {r['url']} (score={r['score']})")
+    
+    print("\n" + "="*50)
+
+def main():
+    parser = argparse.ArgumentParser(
+        description="GQLRecon Pro - GraphQL discovery framework",
+        epilog="Example: python3 gqlrecon.py example.com --js --output report.json"
+    )
+    parser.add_argument("domain", help="Target domain (e.g., example.com)")
+    parser.add_argument("--js", action="store_true", help="Enable JavaScript crawling")
+    parser.add_argument("--output", help="Save JSON output to file")
+    parser.add_argument("--threads", type=int, default=20, help="Concurrency level (default: 20)")
+    parser.add_argument("--paths", nargs="*", help="Extra custom paths to test")
+    parser.add_argument("--version", action="version", version="GQLRecon Pro 1.0")
+    
+    args = parser.parse_args()
+    
+    extra_paths = args.paths or []
+    
+    # JavaScript extraction
+    if args.js:
+        print("[*] Crawling JavaScript files for hidden endpoints...")
+        js_urls = extract_js_urls(args.domain)
+        if js_urls:
+            print(f"[+] Found {len(js_urls)} JavaScript files")
+            js_paths = extract_graphql_from_js(js_urls)
+            if js_paths:
+                print(f"[+] Extracted {len(js_paths)} potential GraphQL paths from JS")
+                extra_paths.extend(js_paths)
+        else:
+            print("[!] No JavaScript files found")
+    
+    print(f"[*] Scanning {args.domain} with {args.threads} concurrent workers...")
+    
+    # Run the scan
+    results = asyncio.run(scan(args.domain, extra_paths, args.threads))
+    
+    # Print results
+    print_results(results)
+    
+    # Save if requested
+    if args.output:
+        save_json(results, args.output)
+        print(f"\n📁 Results saved to {args.output}")
+
+if __name__ == "__main__":
+    main()
