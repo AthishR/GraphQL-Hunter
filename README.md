@@ -32,15 +32,15 @@ pip install -r requirements.txt
 
 **🎯 Basic Usage**
 
-bash
+
 # Basic scan
-graphql-hunter example.com
+python graphql-hunter example.com
 
 # Deep recon with JavaScript crawling
-graphql-hunter example.com --js
+python graphql-hunter example.com --js
 
 # Full hunt with all methods
-graphql-hunter example.com --all-methods --threads 50 --output report.json
+python graphql-hunter example.com --all-methods --threads 50 --output report.json
 
 # With proxy (Burp Suite)
-graphql-hunter example.com --js --proxy http://127.0.0.1:8080
+python graphql-hunter example.com --js --proxy http://127.0.0.1:8080
